@@ -1,0 +1,31 @@
+{
+    "TIMESTAMP": "2026-03-13 13:55:04",
+    "BEST_SCORE": 0.9080871710526311,
+    "SAMPLES_USED": 800,
+    "TIRE_MODEL": {
+        "SOFT": {
+            "base_delta": -0.701817,
+            "deg_linear": 0.072085,
+            "deg_quadratic": 0.00321308,
+            "age_temp_interaction": 0.0
+        },
+        "MEDIUM": {
+            "base_delta": -0.029494,
+            "deg_linear": 0.0,
+            "deg_quadratic": 0.00138054,
+            "age_temp_interaction": 0.0
+        },
+        "HARD": {
+            "base_delta": 0.187366,
+            "deg_linear": 0.006512,
+            "deg_quadratic": 0.00025869,
+            "age_temp_interaction": 0.0
+        }
+    },
+    "TEMP_REFERENCE_C": 35.320459,
+    "TEMP_SENSITIVITY": {
+        "SOFT": 0.012182,
+        "MEDIUM": 0.012859,
+        "HARD": 0.016805
+    }
+}
