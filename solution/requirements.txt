@@ -1,0 +1,5 @@
+# Add any extra packages you use and pin versions.
+# Keep runtime dependencies minimal for evaluator compatibility.
+# Example:
+# pandas==2.3.2
+# numpy==2.3.2
