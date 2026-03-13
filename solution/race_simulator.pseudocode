@@ -84,6 +84,16 @@
  * - What role does track temperature play?
  * - How should pit stops be factored into the simulation?
  *
+ * Practical model shape to start with:
+ * lap_time = base_lap_time
+ *          + compound_offset[tire]
+ *          + a[tire] * tire_age
+ *          + b[tire] * tire_age^2
+ *          + c[tire] * (track_temp - ref_temp)
+ *
+ * Then tune parameters on historical races by comparing predicted finishing
+ * order vs actual order.
+ *
  * See PROBLEM_STATEMENT.md and docs/regulations.md for more details.
  */
 
@@ -115,6 +125,16 @@ END FUNCTION
 
 EXECUTE main()
 
+// Optional: calibration mode (offline tuning)
+FUNCTION calibrate_model():
+    historical_races = LOAD_HISTORICAL_RACES("data/historical_races/")
+
+    params = INITIAL_GUESS()
+    best_params = OPTIMIZE(params) TO_MAXIMIZE ranking_score(predicted_order, actual_order)
+
+    WRITE_PARAMS_INTO_SIMULATOR(best_params)
+END FUNCTION
+
 // ============================================================================
 // TESTING
 // ============================================================================
@@ -130,4 +150,12 @@ EXECUTE main()
  *
  * The test runner will automatically read your command from
  * solution/run_command.txt and test your solution against all 100 test cases.
+ *
+ * Important off-by-one checks to validate manually:
+ * - Is tire age incremented before or after lap-time calculation?
+ * - Does a pit on lap L happen before timing lap L, or after finishing lap L?
+ *
+ * In this project, regulations indicate:
+ * - first lap on fresh tires runs at age 1
+ * - pit stop occurs at the end of the configured lap
  */
