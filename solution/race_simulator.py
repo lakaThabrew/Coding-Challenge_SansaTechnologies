@@ -6,11 +6,12 @@ from pathlib import Path
 import argparse
 
 class TireParams:
-    def __init__(self, base_delta, deg_linear, deg_quadratic, age_temp_interaction):
+    def __init__(self, base_delta, deg_linear, deg_quadratic, age_temp_interaction, threshold=0):
         self.base_delta = base_delta
         self.deg_linear = deg_linear
         self.deg_quadratic = deg_quadratic
         self.age_temp_interaction = age_temp_interaction
+        self.threshold = threshold
 
 def load_parameters():
     global TIRE_MODEL, TEMP_REFERENCE_C, TEMP_SENSITIVITY
@@ -21,7 +22,8 @@ def load_parameters():
                 data = json.load(f)
             for k, v in data.get("TIRE_MODEL", {}).items():
                 TIRE_MODEL[k] = TireParams(
-                    v["base_delta"], v["deg_linear"], v["deg_quadratic"], v["age_temp_interaction"]
+                    v["base_delta"], v["deg_linear"], v["deg_quadratic"], v["age_temp_interaction"],
+                    v.get("threshold", 0)
                 )
             TEMP_REFERENCE_C = data.get("TEMP_REFERENCE_C", TEMP_REFERENCE_C)
             sens = data.get("TEMP_SENSITIVITY", {})
@@ -37,8 +39,11 @@ def lap_time(base_lap_time, tire, tire_age, track_temp):
     p = TIRE_MODEL[tire]
     temp_delta = track_temp - TEMP_REFERENCE_C
     temp_effect = TEMP_SENSITIVITY[tire] * temp_delta
-    degradation = p.deg_linear * tire_age + p.deg_quadratic * (tire_age * tire_age)
-    interaction = p.age_temp_interaction * tire_age * temp_delta
+    
+    effective_age = max(0, tire_age - p.threshold)
+    degradation = p.deg_linear * effective_age + p.deg_quadratic * (effective_age * effective_age)
+    interaction = p.age_temp_interaction * effective_age * temp_delta
+    
     return base_lap_time + p.base_delta + degradation + temp_effect + interaction
 
 def simulate_driver(race_config, strategy):

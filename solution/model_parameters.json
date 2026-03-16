@@ -1,31 +1,34 @@
 {
-    "TIMESTAMP": "2026-03-16 17:50:36",
-    "BEST_SCORE": 0.9090953947368412,
-    "SAMPLES_USED": 800,
+    "TIMESTAMP": "2026-03-16 19:41:58",
+    "BEST_SCORE": 0.945382957393483,
+    "SAMPLES_USED": 1500,
     "TIRE_MODEL": {
         "SOFT": {
-            "base_delta": -0.701817,
-            "deg_linear": 0.072085,
-            "deg_quadratic": 0.00321308,
-            "age_temp_interaction": 0.0
+            "base_delta": -0.7819331191211665,
+            "deg_linear": 0.19180815632340753,
+            "deg_quadratic": 0.009967537504920488,
+            "age_temp_interaction": -0.008000812851716646,
+            "threshold": 4
         },
         "MEDIUM": {
-            "base_delta": -0.029494,
-            "deg_linear": 0.0,
-            "deg_quadratic": 0.00138054,
-            "age_temp_interaction": 0.0
+            "base_delta": 0.3182086458260628,
+            "deg_linear": 0.10384178531135686,
+            "deg_quadratic": 0.004890316194428936,
+            "age_temp_interaction": 0.0031576854397498025,
+            "threshold": 13
         },
         "HARD": {
-            "base_delta": 0.187366,
-            "deg_linear": 0.006512,
-            "deg_quadratic": 0.00025869,
-            "age_temp_interaction": 0.0
+            "base_delta": 0.9439645638137499,
+            "deg_linear": 0.0027069750153030786,
+            "deg_quadratic": 0.0006867893170086536,
+            "age_temp_interaction": -0.0028475150518685955,
+            "threshold": 11
         }
     },
-    "TEMP_REFERENCE_C": 35.320459,
+    "TEMP_REFERENCE_C": 42.50658162849811,
     "TEMP_SENSITIVITY": {
-        "SOFT": 0.012182,
-        "MEDIUM": 0.012859,
-        "HARD": 0.016805
+        "SOFT": -0.009547986703005074,
+        "MEDIUM": -0.02212595279194889,
+        "HARD": 0.00751124422529077
     }
 }
