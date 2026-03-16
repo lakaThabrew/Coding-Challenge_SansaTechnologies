@@ -5,26 +5,122 @@ This runs the optimization algorithm to find the best constants and saves them
 to `model_parameters.json` and records a log in `calibration_log.txt`
 """
 
-from __future__ import annotations
-
 import argparse
 import glob
 import json
 import math
 import random
 import datetime
+import sys
 from pathlib import Path
-from typing import List, Tuple
 
-# Import the base simulation structures from our main app
 from race_simulator import (
-    ModelParams,
     TireParams,
-    _default_model_params,
-    _simulate_race_with_params,
+    TIRE_MODEL,
+    TEMP_REFERENCE_C,
+    TEMP_SENSITIVITY,
+    build_pit_map,
 )
 
-def _rank_score(predicted: List[str], expected: List[str]) -> float:
+class ModelParams:
+    def __init__(self, tire_model, temp_reference_c, temp_sensitivity):
+        self.tire_model = tire_model
+        self.temp_reference_c = temp_reference_c
+        self.temp_sensitivity = temp_sensitivity
+
+    def clone(self):
+        return ModelParams(
+            tire_model={
+                k: TireParams(v.base_delta, v.deg_linear, v.deg_quadratic, v.age_temp_interaction)
+                for k, v in self.tire_model.items()
+            },
+            temp_reference_c=self.temp_reference_c,
+            temp_sensitivity=dict(self.temp_sensitivity),
+        )
+
+def default_model_params():
+    return ModelParams(
+        tire_model={
+            "SOFT": TireParams(
+                base_delta=TIRE_MODEL["SOFT"].base_delta,
+                deg_linear=TIRE_MODEL["SOFT"].deg_linear,
+                deg_quadratic=TIRE_MODEL["SOFT"].deg_quadratic,
+                age_temp_interaction=TIRE_MODEL["SOFT"].age_temp_interaction,
+            ),
+            "MEDIUM": TireParams(
+                base_delta=TIRE_MODEL["MEDIUM"].base_delta,
+                deg_linear=TIRE_MODEL["MEDIUM"].deg_linear,
+                deg_quadratic=TIRE_MODEL["MEDIUM"].deg_quadratic,
+                age_temp_interaction=TIRE_MODEL["MEDIUM"].age_temp_interaction,
+            ),
+            "HARD": TireParams(
+                base_delta=TIRE_MODEL["HARD"].base_delta,
+                deg_linear=TIRE_MODEL["HARD"].deg_linear,
+                deg_quadratic=TIRE_MODEL["HARD"].deg_quadratic,
+                age_temp_interaction=TIRE_MODEL["HARD"].age_temp_interaction,
+            ),
+        },
+        temp_reference_c=TEMP_REFERENCE_C,
+        temp_sensitivity={
+            "SOFT": TEMP_SENSITIVITY["SOFT"],
+            "MEDIUM": TEMP_SENSITIVITY["MEDIUM"],
+            "HARD": TEMP_SENSITIVITY["HARD"],
+        },
+    )
+
+def lap_time_with_params(
+    base_lap_time,
+    tire,
+    tire_age,
+    track_temp,
+    params,
+):
+    p = params.tire_model[tire]
+    temp_delta = track_temp - params.temp_reference_c
+    temp_effect = params.temp_sensitivity[tire] * temp_delta
+    degradation = p.deg_linear * tire_age + p.deg_quadratic * (tire_age * tire_age)
+    interaction = p.age_temp_interaction * tire_age * temp_delta
+    return base_lap_time + p.base_delta + degradation + temp_effect + interaction
+
+def simulate_driver_with_params(race_config, strategy, params):
+    total_laps = int(race_config["total_laps"])
+    base_lap_time = float(race_config["base_lap_time"])
+    pit_lane_time = float(race_config["pit_lane_time"])
+    track_temp = float(race_config["track_temp"])
+
+    current_tire = strategy["starting_tire"]
+    pit_map = build_pit_map(strategy.get("pit_stops", []))
+
+    tire_age = 0
+    total_time = 0.0
+
+    for lap in range(1, total_laps + 1):
+        tire_age += 1
+        total_time += lap_time_with_params(
+            base_lap_time, current_tire, tire_age, track_temp, params
+        )
+
+        if lap in pit_map:
+            total_time += pit_lane_time
+            current_tire = pit_map[lap]
+            tire_age = 0
+
+    return total_time
+
+def simulate_race_with_params(race_config, strategies, params):
+    totals = []
+
+    for key in sorted(strategies.keys(), key=lambda s: int(s[3:])):
+        strategy = strategies[key]
+        driver_id = strategy["driver_id"]
+        race_time = simulate_driver_with_params(race_config, strategy, params)
+        totals.append((driver_id, race_time))
+
+    totals.sort(key=lambda item: (item[1], item[0]))
+    return [driver_id for driver_id, _ in totals]
+
+
+def rank_score(predicted, expected):
     # Blend pairwise ordering + Spearman + exact-match bonus.
     n = len(expected)
     pred_pos = {driver: i for i, driver in enumerate(predicted)}
@@ -49,18 +145,18 @@ def _rank_score(predicted: List[str], expected: List[str]) -> float:
     return 0.65 * pairwise + 0.35 * ((rho + 1.0) / 2.0) + bonus
 
 
-def _evaluate(races: List[dict], params: ModelParams) -> float:
+def evaluate(races, params):
     total = 0.0
     for race in races:
-        predicted = _simulate_race_with_params(race["race_config"], race["strategies"], params)
-        total += _rank_score(predicted, race["finishing_positions"])
+        predicted = simulate_race_with_params(race["race_config"], race["strategies"], params)
+        total += rank_score(predicted, race["finishing_positions"])
     return total / max(len(races), 1)
 
 
-def _clamp_params(params: ModelParams) -> ModelParams:
+def clamp_params(params):
     clamped = params.clone()
 
-    def clamp(v: float, lo: float, hi: float) -> float:
+    def clamp(v, lo, hi):
         return max(lo, min(hi, v))
 
     for tire in ("SOFT", "MEDIUM", "HARD"):
@@ -77,7 +173,7 @@ def _clamp_params(params: ModelParams) -> ModelParams:
     return clamped
 
 
-def _mutate(params: ModelParams, rng: random.Random, scale: float) -> ModelParams:
+def mutate(params, rng, scale):
     p = params.clone()
 
     tire = rng.choice(["SOFT", "MEDIUM", "HARD"])
@@ -119,13 +215,11 @@ def _mutate(params: ModelParams, rng: random.Random, scale: float) -> ModelParam
             )
         p.tire_model[tire] = tp
 
-    return _clamp_params(p)
+    return clamp_params(p)
 
 
-def _reservoir_sample_historical(
-    rng: random.Random, sample_size: int, data_glob: str
-) -> List[dict]:
-    selected: List[dict] = []
+def reservoir_sample_historical(rng, sample_size, data_glob):
+    selected = []
     seen = 0
 
     files = sorted(glob.glob(data_glob))
@@ -148,12 +242,10 @@ def _reservoir_sample_historical(
     return selected
 
 
-def _optimize(
-    races: List[dict], initial: ModelParams, iterations: int, seed: int
-) -> Tuple[ModelParams, float]:
+def optimize(races, initial, iterations, seed):
     rng = random.Random(seed)
-    current = _clamp_params(initial)
-    current_score = _evaluate(races, current)
+    current = clamp_params(initial)
+    current_score = evaluate(races, current)
 
     best = current.clone()
     best_score = current_score
@@ -161,8 +253,8 @@ def _optimize(
     for i in range(1, iterations + 1):
         progress = i / max(iterations, 1)
         scale = 1.5 - 1.2 * progress
-        candidate = _mutate(current, rng, scale)
-        candidate_score = _evaluate(races, candidate)
+        candidate = mutate(current, rng, scale)
+        candidate_score = evaluate(races, candidate)
 
         if candidate_score >= current_score:
             current = candidate
@@ -184,7 +276,7 @@ def _optimize(
     return best, best_score
 
 
-def save_calibration_results(best: ModelParams, score: float, samples: int, path_json: Path, path_log: Path):
+def save_calibration_results(best, score, samples, path_json, path_log):
     now = datetime.datetime.now()
     now_str = now.strftime("%Y-%m-%d %H:%M:%S")
     
@@ -212,7 +304,6 @@ def save_calibration_results(best: ModelParams, score: float, samples: int, path
         
     # Append to log
     log_entry = (
-        f"----------------------------------------------------\n"
         f"Calibration Run: {now_str}\n"
         f"Samples used: {samples}\n"
         f"Best score achieved: {score:.6f}\n"
@@ -223,52 +314,46 @@ def save_calibration_results(best: ModelParams, score: float, samples: int, path
         f.write(log_entry)
 
 
-def main(argv: List[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Calibrate race simulator coefficients")
-    parser.add_argument("--sample-size", type=int, default=800, help="Number of historical races to sample")
-    parser.add_argument("--iterations", type=int, default=2000, help="Optimization iterations")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--dry-run", action="store_true", help="Do not save files")
-    parser.add_argument(
-        "--data-glob",
-        default="data/historical_races/races_*.json",
-        help="Glob pattern for historical race files (from repo root)",
-    )
-    import sys
-    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
+parser = argparse.ArgumentParser(description="Calibrate race simulator coefficients")
+parser.add_argument("--sample-size", type=int, default=800, help="Number of historical races to sample")
+parser.add_argument("--iterations", type=int, default=2000, help="Optimization iterations")
+parser.add_argument("--seed", type=int, default=42, help="Random seed")
+parser.add_argument("--dry-run", action="store_true", help="Do not save files")
+parser.add_argument(
+    "--data-glob",
+    default="data/historical_races/races_*.json",
+    help="Glob pattern for historical race files (from repo root)",
+)
+args = parser.parse_args(sys.argv[1:])
 
-    root = Path(__file__).resolve().parent.parent
-    json_path = Path(__file__).resolve().parent / "model_parameters.json"
-    log_path = Path(__file__).resolve().parent / "calibration_log.txt"
+root = Path(__file__).resolve().parent.parent
+json_path = Path(__file__).resolve().parent / "model_parameters.json"
+log_path = Path(__file__).resolve().parent / "calibration_log.txt"
 
-    print("Sampling historical races...")
-    rng = random.Random(args.seed)
-    races = _reservoir_sample_historical(
-        rng=rng,
-        sample_size=args.sample_size,
-        data_glob=str(root / args.data_glob),
-    )
-    print(f"Sampled races: {len(races)}")
+print("Sampling historical races...")
+rng = random.Random(args.seed)
+races = reservoir_sample_historical(
+    rng=rng,
+    sample_size=args.sample_size,
+    data_glob=str(root / args.data_glob),
+)
+print(f"Sampled races: {len(races)}")
 
-    initial = _default_model_params()
-    baseline_score = _evaluate(races, initial)
-    print(f"Baseline score: {baseline_score:.6f}")
+initial = default_model_params()
+baseline_score = evaluate(races, initial)
+print(f"Baseline score: {baseline_score:.6f}")
 
-    best, best_score = _optimize(
-        races=races,
-        initial=initial,
-        iterations=args.iterations,
-        seed=args.seed,
-    )
-    print(f"Best score: {best_score:.6f}")
+best, best_score = optimize(
+    races=races,
+    initial=initial,
+    iterations=args.iterations,
+    seed=args.seed,
+)
+print(f"Best score: {best_score:.6f}")
 
-    if args.dry_run:
-        print("\nDry run enabled: no files saved.")
-        return
-
+if args.dry_run:
+    print("\nDry run enabled: no files saved.")
+else:
     save_calibration_results(best, best_score, len(races), json_path, log_path)
     print(f"\nSaved updated parameters to: {json_path}")
     print(f"Appended log to: {log_path}")
-
-if __name__ == "__main__":
-    main()
