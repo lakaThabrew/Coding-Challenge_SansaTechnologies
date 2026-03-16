@@ -1,6 +1,0 @@
-----------------------------------------------------
-Calibration Run: 2026-03-13 13:55:04
-Samples used: 800
-Best score achieved: 0.908087
-Saved to: model_parameters.json
-----------------------------------------------------

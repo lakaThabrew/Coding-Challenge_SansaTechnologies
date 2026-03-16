@@ -1,7 +1,7 @@
 {
-    "TIMESTAMP": "2026-03-13 13:55:04",
-    "BEST_SCORE": 0.9080871710526311,
-    "SAMPLES_USED": 800,
+    "TIMESTAMP": "2026-03-13 18:04:56",
+    "BEST_SCORE": 0.9102986842105268,
+    "SAMPLES_USED": 400,
     "TIRE_MODEL": {
         "SOFT": {
             "base_delta": -0.701817,
