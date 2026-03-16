@@ -39,7 +39,7 @@ class ModelParams:
         )
 
 def default_model_params():
-    return ModelParams(
+    Model = ModelParams(
         tire_model={
             "SOFT": TireParams(
                 base_delta=TIRE_MODEL["SOFT"].base_delta,
@@ -67,14 +67,9 @@ def default_model_params():
             "HARD": TEMP_SENSITIVITY["HARD"],
         },
     )
+    return Model
 
-def lap_time_with_params(
-    base_lap_time,
-    tire,
-    tire_age,
-    track_temp,
-    params,
-):
+def lap_time_with_params(base_lap_time, tire, tire_age, track_temp, params,):
     p = params.tire_model[tire]
     temp_delta = track_temp - params.temp_reference_c
     temp_effect = params.temp_sensitivity[tire] * temp_delta
@@ -227,6 +222,7 @@ def reservoir_sample_historical(rng, sample_size, data_glob):
         raise FileNotFoundError(f"No historical files found with pattern: {data_glob}")
 
     for file_path in files:
+        print("Reading file:", file_path)
         with open(file_path, "r", encoding="utf-8") as f:
             races = json.load(f)
 
@@ -314,46 +310,50 @@ def save_calibration_results(best, score, samples, path_json, path_log):
         f.write(log_entry)
 
 
-parser = argparse.ArgumentParser(description="Calibrate race simulator coefficients")
-parser.add_argument("--sample-size", type=int, default=800, help="Number of historical races to sample")
-parser.add_argument("--iterations", type=int, default=2000, help="Optimization iterations")
-parser.add_argument("--seed", type=int, default=42, help="Random seed")
-parser.add_argument("--dry-run", action="store_true", help="Do not save files")
-parser.add_argument(
-    "--data-glob",
-    default="data/historical_races/races_*.json",
-    help="Glob pattern for historical race files (from repo root)",
-)
-args = parser.parse_args(sys.argv[1:])
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Calibrate race simulator coefficients")
+    parser.add_argument("--sample-size", type=int, default=800, help="Number of historical races to sample")
+    parser.add_argument("--iterations", type=int, default=2000, help="Optimization iterations")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--dry-run", action="store_true", help="Do not save files")
+    parser.add_argument(
+        "--data-glob",
+        default="data/historical_races/races_*.json",
+        help="Glob pattern for historical race files (from repo root)",
+    )
+    args = parser.parse_args(argv if argv is not None else sys.argv[1:])
 
-root = Path(__file__).resolve().parent.parent
-json_path = Path(__file__).resolve().parent / "model_parameters.json"
-log_path = Path(__file__).resolve().parent / "calibration_log.txt"
+    root = Path(__file__).resolve().parent.parent
+    json_path = Path(__file__).resolve().parent / "model_parameters.json"
+    log_path = Path(__file__).resolve().parent / "calibration_log.txt"
 
-print("Sampling historical races...")
-rng = random.Random(args.seed)
-races = reservoir_sample_historical(
-    rng=rng,
-    sample_size=args.sample_size,
-    data_glob=str(root / args.data_glob),
-)
-print(f"Sampled races: {len(races)}")
+    print("Sampling historical races...")
+    rng = random.Random()
+    races = reservoir_sample_historical(
+        rng=rng,
+        sample_size=args.sample_size,
+        data_glob=str(root / args.data_glob),
+    )
+    print(f"Sampled races: {len(races)}")
 
-initial = default_model_params()
-baseline_score = evaluate(races, initial)
-print(f"Baseline score: {baseline_score:.6f}")
+    initial = default_model_params()
+    baseline_score = evaluate(races, initial)
+    print(f"Baseline score: {baseline_score:.6f}")
 
-best, best_score = optimize(
-    races=races,
-    initial=initial,
-    iterations=args.iterations,
-    seed=args.seed,
-)
-print(f"Best score: {best_score:.6f}")
+    best, best_score = optimize(
+        races=races,
+        initial=initial,
+        iterations=args.iterations,
+        seed=args.seed,
+    )
+    print(f"Best score: {best_score:.6f}")
 
-if args.dry_run:
-    print("\nDry run enabled: no files saved.")
-else:
-    save_calibration_results(best, best_score, len(races), json_path, log_path)
-    print(f"\nSaved updated parameters to: {json_path}")
-    print(f"Appended log to: {log_path}")
+    if args.dry_run:
+        print("\nDry run enabled: no files saved.")
+    else:
+        save_calibration_results(best, best_score, len(races), json_path, log_path)
+        print(f"\nSaved updated parameters to: {json_path}")
+        print(f"Appended log to: {log_path}")
+
+if __name__ == "__main__":
+    main()

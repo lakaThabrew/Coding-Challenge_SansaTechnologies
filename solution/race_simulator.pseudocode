@@ -86,10 +86,11 @@
  *
  * Practical model shape to start with:
  * lap_time = base_lap_time
- *          + compound_offset[tire]
- *          + a[tire] * tire_age
- *          + b[tire] * tire_age^2
- *          + c[tire] * (track_temp - ref_temp)
+ *          + base_delta[tire]
+ *          + deg_linear[tire] * tire_age
+ *          + deg_quadratic[tire] * tire_age^2
+ *          + temp_sensitivity[tire] * (track_temp - ref_temp)
+ *          + age_temp_interaction[tire] * tire_age * (track_temp - ref_temp)
  *
  * Then tune parameters on historical races by comparing predicted finishing
  * order vs actual order.

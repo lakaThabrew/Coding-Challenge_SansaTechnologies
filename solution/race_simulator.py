@@ -119,6 +119,39 @@ def solve_from_stdin():
     return predict_from_test_case(test_case)    
     
 # Baseline coefficients. Tune these from historical races.
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description="Run F1 Race Simulator")
+    parser.add_argument("--output", "-o", type=str, help="Optional: Path to save the output JSON file")
+
+    # Parse known args so unexpected runner flags do not crash execution.
+    if argv is None:
+        args, _ = parser.parse_known_args()
+    else:
+        args, _ = parser.parse_known_args(argv)
+
+    try:
+        output_data = solve_from_stdin()
+    except Exception as e:
+        print(f"Error reading from stdin: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    json_str = json.dumps(output_data)
+
+    # Always print to stdout because test_runner.sh expects it.
+    print(json_str)
+
+    # If user provided an output file, save it there too.
+    if args.output:
+        try:
+            with open(args.output, "w", encoding="utf-8") as f:
+                f.write(json_str)
+            print(f"Successfully saved output to {args.output}", file=sys.stderr)
+        except Exception as e:
+            print(f"Failed to save output to {args.output}: {e}", file=sys.stderr)
+
+
+
 TIRE_MODEL = {
     "SOFT": TireParams(base_delta=-0.701817, deg_linear=0.072085, deg_quadratic=0.00321308, age_temp_interaction=0.00000000),
     "MEDIUM": TireParams(base_delta=-0.029494, deg_linear=0.000000, deg_quadratic=0.00138054, age_temp_interaction=0.00000000),
@@ -134,28 +167,5 @@ TEMP_SENSITIVITY = {
 
 load_parameters()
 
-parser = argparse.ArgumentParser(description="Run F1 Race Simulator")
-parser.add_argument("--output", "-o", type=str, help="Optional: Path to save the output JSON file")
-
-# Parse known args so unexpected runner flags do not crash execution.
-args, _ = parser.parse_known_args()
-
-try:
-    output_data = solve_from_stdin()
-except Exception as e:
-    print(f"Error reading from stdin: {e}", file=sys.stderr)
-    sys.exit(1)
-
-json_str = json.dumps(output_data)
-
-# Always print to stdout because test_runner.sh expects it.
-print(json_str)
-
-# If user provided an output file, save it there too.
-if args.output:
-    try:
-        with open(args.output, "w", encoding="utf-8") as f:
-            f.write(json_str)
-        print(f"Successfully saved output to {args.output}", file=sys.stderr)
-    except Exception as e:
-        print(f"Failed to save output to {args.output}: {e}", file=sys.stderr)
+if __name__ == "__main__":
+    main()
