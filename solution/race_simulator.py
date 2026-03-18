@@ -1,195 +1,137 @@
 #!/usr/bin/env python3
 import json
-import re
 import sys
-from pathlib import Path
 import argparse
+from pathlib import Path
 
-class TireParams:
-    def __init__(self, base_delta, deg_linear, deg_quadratic, age_temp_interaction, threshold=0):
-        self.base_delta = base_delta
-        self.deg_linear = deg_linear
-        self.deg_quadratic = deg_quadratic
-        self.age_temp_interaction = age_temp_interaction
-        self.threshold = threshold
+# Default tire params - these get overridden by model_parameters.json if it exists
+PARAMS = {
+    "SOFT": {
+        "offset": 2.958962002059359,  # how much faster SOFT is vs base
+        "cliff":  10,                  # laps before degradation kicks in
+        "deg":    0.3938052242423563,  # degradation per lap (linear)
+        "deg2":   0.0,                 # degradation per lap (quadratic extra)
+    },
+    "MEDIUM": {
+        "offset": 3.9262504324101357,
+        "cliff":  20,
+        "deg":    0.2005977212786465,
+        "deg2":   0.0,
+    },
+    "HARD": {
+        "offset": 4.7244861975727845,
+        "cliff":  30,
+        "deg":    0.10319025698674321,
+        "deg2":   0.0,
+    },
+    "temp_coef":     0.112095,  # hotter track = tires degrade faster
+    "fuel_effect":   0.00010257806706596489, # car gets lighter as fuel burns
+    "temp_base_coef": 0.0,      # direct effect of temp on base lap time
+}
+
 
 def load_parameters():
-    global TIRE_MODEL, TEMP_REFERENCE_C, TEMP_SENSITIVITY
-    base_dir = Path(__file__).parent
-    config_candidates = [
-        base_dir / "model_parameters.json",
-        base_dir / "model_parameters_checkpoint.json",
+    # Try to load calibrated params - pick the one with the best score
+    global PARAMS
+    candidates = [
+        Path(__file__).parent / "model_parameters.json",
+        Path(__file__).parent / "model_parameters_checkpoint.json",
     ]
-
     best_data = None
     best_score = float("-inf")
 
-    for config_path in config_candidates:
-        if not config_path.exists():
+    for p in candidates:
+        if not p.exists():
             continue
         try:
-            with open(config_path, "r", encoding="utf-8-sig") as f:
+            with open(p, "r") as f:
                 data = json.load(f)
             score = data.get("BEST_SCORE", float("-inf"))
             if score > best_score:
                 best_score = score
                 best_data = data
         except Exception as e:
-            print(f"Warning: Failed to read {config_path.name}: {e}", file=sys.stderr)
+            print(f"Warning: could not load {p.name}: {e}", file=sys.stderr)
 
-    if best_data is None:
-        return
+    if best_data and "PARAMS" in best_data:
+        PARAMS.update(best_data["PARAMS"])
 
-    try:
-        for k, v in best_data.get("TIRE_MODEL", {}).items():
-            TIRE_MODEL[k] = TireParams(
-                v["base_delta"], v["deg_linear"], v["deg_quadratic"], v["age_temp_interaction"],
-                v.get("threshold", 0)
-            )
-        TEMP_REFERENCE_C = best_data.get("TEMP_REFERENCE_C", TEMP_REFERENCE_C)
-        sens = best_data.get("TEMP_SENSITIVITY", {})
-        for k, v in sens.items():
-            TEMP_SENSITIVITY[k] = v
-    except Exception as e:
-        print(f"Warning: Failed to load external parameters: {e}", file=sys.stderr)
-
-def build_pit_map(pit_stops):
-    return {int(stop["lap"]): stop["to_tire"] for stop in pit_stops}
-
-def lap_time(base_lap_time, tire, tire_age, track_temp):
-    p = TIRE_MODEL[tire]
-    temp_delta = track_temp - TEMP_REFERENCE_C
-    temp_effect = TEMP_SENSITIVITY[tire] * temp_delta
-    
-    effective_age = max(0, tire_age - p.threshold)
-    degradation = p.deg_linear * effective_age + p.deg_quadratic * (effective_age * effective_age)
-    interaction = p.age_temp_interaction * effective_age * temp_delta
-    
-    return base_lap_time + p.base_delta + degradation + temp_effect + interaction
 
 def simulate_driver(race_config, strategy):
-    total_laps = int(race_config["total_laps"])
-    base_lap_time = float(race_config["base_lap_time"])
-    pit_lane_time = float(race_config["pit_lane_time"])
-    track_temp = float(race_config["track_temp"])
+    # Pull race info
+    total_laps   = int(race_config["total_laps"])
+    base_time    = float(race_config["base_lap_time"])
+    pit_time     = float(race_config["pit_lane_time"])
+    temp         = float(race_config["track_temp"])
 
     current_tire = strategy["starting_tire"]
-    pit_map = build_pit_map(strategy.get("pit_stops", []))
+    pit_map = {int(s["lap"]): s["to_tire"] for s in strategy.get("pit_stops", [])}
 
-    tire_age = 0
+    tire_age   = 0
     total_time = 0.0
+    last_lap_t = 0.0
+
+    # Pre-calculate temperature effects once (same across all laps)
+    temp_deg_mult    = 1.0 + temp * PARAMS["temp_coef"]
+    temp_base_effect = temp * PARAMS["temp_base_coef"]
 
     for lap in range(1, total_laps + 1):
-        tire_age += 1
-        total_time += lap_time(base_lap_time, current_tire, tire_age, track_temp)
+        tire_age += 1  # tire age starts at 1 on first lap of a stint
+        tire = PARAMS[current_tire]
 
+        # Build this lap's time: base + compound offset + temp effect - fuel save
+        fuel_saving = PARAMS["fuel_effect"] * lap
+        lap_t = base_time + tire["offset"] + temp_base_effect - fuel_saving
+
+        # Add degradation only after the cliff (grace period)
+        over_cliff = max(0, tire_age - tire["cliff"])
+        if over_cliff > 0:
+            lap_t += over_cliff * tire["deg"] * temp_deg_mult
+            lap_t += over_cliff * over_cliff * tire["deg2"] * temp_deg_mult
+
+        total_time += lap_t
+        last_lap_t  = lap_t
+
+        # Pit stop at end of this lap
         if lap in pit_map:
-            total_time += pit_lane_time
+            total_time  += pit_time
             current_tire = pit_map[lap]
-            tire_age = 0
+            tire_age     = 0
 
-    return total_time
+    return total_time, last_lap_t
+
 
 def simulate_race(race_config, strategies):
-    # strategies are keyed pos1..pos20 but race outcome depends on total times only.
-    totals = []
+    results = []
+    for strat in strategies.values():
+        total, last_lap = simulate_driver(race_config, strat)
+        results.append((total, last_lap, strat["driver_id"]))
 
-    for key in sorted(strategies.keys(), key=lambda s: int(s[3:])):
-        strategy = strategies[key]
-        driver_id = strategy["driver_id"]
-        race_time = simulate_driver(race_config, strategy)
-        totals.append((driver_id, race_time))
-
-    # Secondary driver_id key guarantees deterministic ordering.
-    totals.sort(key=lambda item: (item[1], item[0]))
-    return [driver_id for driver_id, _ in totals]
+    # Sort by total race time, then last lap time, then driver ID (keeps it deterministic)
+    results.sort(key=lambda x: (x[0], x[1], x[2]))
+    return [r[2] for r in results]
 
 
-def validate_output(finishing_positions):
-    if len(finishing_positions) != 20:
-        raise ValueError("finishing_positions must contain exactly 20 driver IDs")
-
-    if len(set(finishing_positions)) != 20:
-        raise ValueError("finishing_positions must not contain duplicates")
-
-    expected = {f"D{i:03d}" for i in range(1, 21)}
-    actual = set(finishing_positions)
-    if actual != expected:
-        missing = sorted(expected - actual)
-        extras = sorted(actual - expected)
-        raise ValueError(
-            "finishing_positions must contain all drivers D001-D020 exactly once; "
-            f"missing={missing}, extras={extras}"
-        )
-
-    invalid = [driver for driver in finishing_positions if not re.fullmatch(r"D\d{3}", driver)]
-    if invalid:
-        raise ValueError(f"driver IDs must match D### format, invalid={invalid}")
-
-def predict_from_test_case(test_case):
-    race_id = test_case["race_id"]
-    race_config = test_case["race_config"]
-    strategies = test_case["strategies"]
-
-    finishing_positions = simulate_race(race_config, strategies)
-
-    validate_output(finishing_positions)
-
-    return {
-        "race_id": race_id,
-        "finishing_positions": finishing_positions,
-    }
-
-def solve_from_stdin():
-    test_case = json.load(sys.stdin)
-    return predict_from_test_case(test_case)    
-    
-# Baseline coefficients. Tune these from historical races.
-
-def main(argv=None):
-    parser = argparse.ArgumentParser(description="Run F1 Race Simulator")
-    parser.add_argument("--output", "-o", type=str, help="Optional: Path to save the output JSON file")
-
-    # Parse known args so unexpected runner flags do not crash execution.
-    if argv is None:
-        args, _ = parser.parse_known_args()
-    else:
-        args, _ = parser.parse_known_args(argv)
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output", "-o", type=str, help="Optional path to save output JSON")
+    args, _ = parser.parse_known_args()
 
     try:
-        output_data = solve_from_stdin()
+        test_case = json.load(sys.stdin)
     except Exception as e:
-        print(f"Error reading from stdin: {e}", file=sys.stderr)
+        print(f"Error reading stdin: {e}", file=sys.stderr)
         sys.exit(1)
 
-    json_str = json.dumps(output_data)
-
-    # Always print to stdout because test_runner.sh expects it.
+    finishing = simulate_race(test_case["race_config"], test_case["strategies"])
+    output    = {"race_id": test_case["race_id"], "finishing_positions": finishing}
+    json_str  = json.dumps(output)
     print(json_str)
 
-    # If user provided an output file, save it there too.
     if args.output:
-        try:
-            with open(args.output, "w", encoding="utf-8") as f:
-                f.write(json_str)
-            print(f"Successfully saved output to {args.output}", file=sys.stderr)
-        except Exception as e:
-            print(f"Failed to save output to {args.output}: {e}", file=sys.stderr)
+        with open(args.output, "w") as f:
+            f.write(json_str)
 
-
-
-TIRE_MODEL = {
-    "SOFT": TireParams(base_delta=-0.701817, deg_linear=0.072085, deg_quadratic=0.00321308, age_temp_interaction=0.00000000),
-    "MEDIUM": TireParams(base_delta=-0.029494, deg_linear=0.000000, deg_quadratic=0.00138054, age_temp_interaction=0.00000000),
-    "HARD": TireParams(base_delta=0.187366, deg_linear=0.006512, deg_quadratic=0.00025869, age_temp_interaction=0.00000000),
-}
-
-TEMP_REFERENCE_C = 35.320459
-TEMP_SENSITIVITY = {
-    "SOFT": 0.012182,
-    "MEDIUM": 0.012859,
-    "HARD": 0.016805,
-}
 
 load_parameters()
 

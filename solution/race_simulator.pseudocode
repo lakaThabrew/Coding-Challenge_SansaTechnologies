@@ -1,139 +1,138 @@
 /*
  * Box Box Box - F1 Race Simulator
- * Language-Agnostic Input/Output Specification
- *
- * This file demonstrates the expected input and output format.
- * The implementation approach is entirely up to you.
+ * Pseudocode describing the simulation model
  */
 
 // ============================================================================
-// INPUT SPECIFICATION
+// INPUT  (JSON from stdin)
 // ============================================================================
 
 /*
- * Your program receives a JSON object via STDIN:
- *
- * {
- *   "race_id": "TEST_001",
- *   "race_config": {
- *     "track": "Monza",
- *     "total_laps": 53,
- *     "base_lap_time": 82.5,
- *     "pit_lane_time": 22.0,
- *     "track_temp": 32
- *   },
- *   "strategies": {
- *     "pos1": {
- *       "driver_id": "D001",
- *       "starting_tire": "SOFT",
- *       "pit_stops": [
- *         {"lap": 18, "from_tire": "SOFT", "to_tire": "MEDIUM"}
- *       ]
- *     },
- *     "pos2": {
- *       "driver_id": "D002",
- *       "starting_tire": "MEDIUM",
- *       "pit_stops": [
- *         {"lap": 26, "from_tire": "MEDIUM", "to_tire": "HARD"}
- *       ]
- *     }
- *     // ... pos3 through pos20 (20 drivers total)
- *   }
- * }
- */
+{
+  "race_id": "TEST_001",
+  "race_config": {
+    "track": "Monza",
+    "total_laps": 53,
+    "base_lap_time": 82.5,
+    "pit_lane_time": 22.0,
+    "track_temp": 32
+  },
+  "strategies": {
+    "pos1": {
+      "driver_id": "D001",
+      "starting_tire": "SOFT",
+      "pit_stops": [
+        { "lap": 18, "from_tire": "SOFT", "to_tire": "MEDIUM" }
+      ]
+    },
+    // pos2 ... pos20
+  }
+}
+*/
 
 // ============================================================================
-// OUTPUT SPECIFICATION
+// OUTPUT  (JSON to stdout)
 // ============================================================================
 
 /*
- * Your program must output a JSON object to STDOUT:
- *
- * {
- *   "race_id": "TEST_001",
- *   "finishing_positions": [
- *     "D007", "D015", "D003", "D012", "D008",
- *     "D001", "D011", "D019", "D005", "D014",
- *     "D020", "D004", "D009", "D018", "D006",
- *     "D013", "D017", "D010", "D016", "D002"
- *   ]
- * }
- *
- * The finishing_positions array must contain exactly 20 driver IDs,
- * ordered from 1st place to 20th place.
- */
+{
+  "race_id": "TEST_001",
+  "finishing_positions": [
+    "D007", "D015", "D003", ... "D002"   // 20 driver IDs, 1st to 20th
+  ]
+}
+*/
 
 // ============================================================================
-// HIGH-LEVEL APPROACH
+// LAP TIME FORMULA
 // ============================================================================
 
 /*
- * Your task is to predict the finishing positions by simulating the race.
+ * For each lap:
  *
- * Steps to consider:
- * 1. Read and parse the JSON input from STDIN
- * 2. Simulate the race to determine finishing order
- * 3. Output the results as JSON to STDOUT
+ *   over_cliff   = max(0, tire_age - cliff[tire])
+ *   degradation  = over_cliff * deg[tire] * (1 + temp * temp_coef)
+ *                + over_cliff^2 * deg2[tire] * (1 + temp * temp_coef)
  *
- * Your challenge is to discover how to accurately simulate the race by
- * analyzing the 30,000 historical races provided in data/historical_races/
+ *   lap_time = base_lap_time
+ *            + offset[tire]               <- compound speed delta
+ *            + temp * temp_base_coef      <- direct temp effect on base time
+ *            - fuel_effect * abs_lap      <- lighter car = faster each lap
+ *            + degradation                <- 0 until cliff is reached
  *
- * Key questions to answer through data analysis:
- * - How do different tire compounds affect performance?
- * - How do tires behave as they age?
- * - What role does track temperature play?
- * - How should pit stops be factored into the simulation?
+ * Tire compounds:
+ *   SOFT   -> fastest offset,  cliff ~10 laps, degrades quickly
+ *   MEDIUM -> mid offset,      cliff ~20 laps, degrades moderately
+ *   HARD   -> slowest offset,  cliff ~30 laps, degrades slowly
  *
- * Practical model shape to start with:
- * lap_time = base_lap_time
- *          + base_delta[tire]
- *          + deg_linear[tire] * tire_age
- *          + deg_quadratic[tire] * tire_age^2
- *          + temp_sensitivity[tire] * (track_temp - ref_temp)
- *          + age_temp_interaction[tire] * tire_age * (track_temp - ref_temp)
- *
- * Then tune parameters on historical races by comparing predicted finishing
- * order vs actual order.
- *
- * See PROBLEM_STATEMENT.md and docs/regulations.md for more details.
+ * Tire age resets to 0 after each pit stop.
+ * First lap on any set runs at age = 1.
  */
 
 // ============================================================================
-// IMPLEMENTATION
+// MAIN ALGORITHM
 // ============================================================================
 
 FUNCTION main():
-    // Read input from STDIN
-    input_json = READ_FROM_STDIN()
-    test_case = PARSE_JSON(input_json)
 
-    // TODO: Implement your race simulation logic here
-    // Analyze historical data to understand the race mechanics
-    // Build a model that predicts finishing positions
+    test_case = PARSE_JSON( READ_STDIN() )
+    params    = LOAD_PARAMS("model_parameters.json")  // fallback to hardcoded defaults
 
-    finishing_positions = YOUR_SIMULATION_LOGIC(test_case)
+    results = []
 
-    // Prepare output
-    output = {
-        race_id: test_case.race_id,
-        finishing_positions: finishing_positions
-    }
+    FOR EACH strategy IN test_case.strategies:
 
-    // Write output to STDOUT
-    output_json = TO_JSON(output)
-    WRITE_TO_STDOUT(output_json)
+        tire     = strategy.starting_tire
+        tire_age = 0
+        total    = 0.0
+        pit_map  = { stop.lap -> stop.to_tire }
+
+        FOR lap FROM 1 TO test_case.race_config.total_laps:
+
+            tire_age += 1
+
+            over_cliff = max(0, tire_age - params[tire].cliff)
+            deg_mult   = 1 + track_temp * params.temp_coef
+            deg        = over_cliff * params[tire].deg  * deg_mult
+                       + over_cliff^2 * params[tire].deg2 * deg_mult
+
+            lap_time = base_lap_time
+                     + params[tire].offset
+                     + track_temp * params.temp_base_coef
+                     - params.fuel_effect * lap
+                     + deg
+
+            total += lap_time
+
+            IF lap IN pit_map:
+                total   += pit_lane_time
+                tire     = pit_map[lap]
+                tire_age = 0
+
+        results.push( (total, strategy.driver_id) )
+
+    // Sort by time, ties broken alphabetically by driver ID
+    SORT results BY (total ASC, driver_id ASC)
+
+    PRINT_JSON({
+        race_id:             test_case.race_id,
+        finishing_positions: results.MAP(r => r.driver_id)
+    })
+
 END FUNCTION
 
-EXECUTE main()
+// ============================================================================
+// CALIBRATION  (offline, see calibrate_model.py)
+// ============================================================================
 
-// Optional: calibration mode (offline tuning)
-FUNCTION calibrate_model():
-    historical_races = LOAD_HISTORICAL_RACES("data/historical_races/")
-
-    params = INITIAL_GUESS()
-    best_params = OPTIMIZE(params) TO_MAXIMIZE ranking_score(predicted_order, actual_order)
-
-    WRITE_PARAMS_INTO_SIMULATOR(best_params)
+FUNCTION calibrate():
+    races  = LOAD_HISTORICAL_RACES("data/historical_races/")
+    params = DIFFERENTIAL_EVOLUTION(
+                 objective   = maximize_spearman_plus_exact_bonus,
+                 start_from  = known_good_params,
+                 generations = 100
+             )
+    SAVE_PARAMS("solution/model_parameters.json", params)
 END FUNCTION
 
 // ============================================================================
@@ -141,22 +140,13 @@ END FUNCTION
 // ============================================================================
 
 /*
- * Test your implementation:
+ * Single test:
+ *   cat data/test_cases/inputs/test_001.json | python solution/race_simulator.py
  *
- * Single test case:
- *   cat data/test_cases/inputs/test_001.json | your_program
- *
- * All test cases:
+ * All 100 test cases:
  *   ./test_runner.sh
  *
- * The test runner will automatically read your command from
- * solution/run_command.txt and test your solution against all 100 test cases.
- *
- * Important off-by-one checks to validate manually:
- * - Is tire age incremented before or after lap-time calculation?
- * - Does a pit on lap L happen before timing lap L, or after finishing lap L?
- *
- * In this project, regulations indicate:
- * - first lap on fresh tires runs at age 1
- * - pit stop occurs at the end of the configured lap
+ * Off-by-one rules (important!):
+ *   - tire_age is incremented BEFORE calculating the lap time
+ *   - pit stop occurs at END of the configured lap (after timing)
  */
