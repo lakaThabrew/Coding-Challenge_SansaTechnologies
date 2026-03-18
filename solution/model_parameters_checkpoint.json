@@ -1,34 +1,34 @@
 {
-    "TIMESTAMP": "2026-03-18 07:50:28",
-    "BEST_SCORE": 0.975384060150447,
+    "TIMESTAMP": "2026-03-18 09:07:55",
+    "BEST_SCORE": 0.9766681203008175,
     "SAMPLES_USED": 10000,
     "TIRE_MODEL": {
         "SOFT": {
-            "base_delta": -0.09849806792886417,
-            "deg_linear": 0.12290638092609535,
-            "deg_quadratic": 0.009831767752414037,
-            "age_temp_interaction": 0.018781377142865343,
+            "base_delta": -0.15874363030393002,
+            "deg_linear": 0.14024719157009513,
+            "deg_quadratic": 0.009724365406040204,
+            "age_temp_interaction": 0.016616331118085744,
             "threshold": 6
         },
         "MEDIUM": {
-            "base_delta": 0.6474941073178531,
-            "deg_linear": 0.10042646527118554,
-            "deg_quadratic": 0.003646240468229565,
-            "age_temp_interaction": 0.007592390429682334,
+            "base_delta": 0.5550894605004967,
+            "deg_linear": 0.10071420557501921,
+            "deg_quadratic": 0.003974700698208214,
+            "age_temp_interaction": 0.006831774771392256,
             "threshold": 16
         },
         "HARD": {
-            "base_delta": 0.7465956206185829,
-            "deg_linear": 0.046096571242372895,
-            "deg_quadratic": 0.0006523832705859952,
-            "age_temp_interaction": 0.001340711735225829,
-            "threshold": 20
+            "base_delta": 0.7016315377992877,
+            "deg_linear": 0.057102900401666094,
+            "deg_quadratic": 0.0004562467245343919,
+            "age_temp_interaction": 0.0008939049362084128,
+            "threshold": 21
         }
     },
-    "TEMP_REFERENCE_C": 10.52040470345343,
+    "TEMP_REFERENCE_C": 11.749344908500206,
     "TEMP_SENSITIVITY": {
-        "SOFT": -0.03457978095760389,
-        "MEDIUM": -0.03000144901643613,
-        "HARD": -0.010695643766741082
+        "SOFT": -0.04481989509969723,
+        "MEDIUM": -0.03304329655658238,
+        "HARD": -0.016670789935408697
     }
 }
