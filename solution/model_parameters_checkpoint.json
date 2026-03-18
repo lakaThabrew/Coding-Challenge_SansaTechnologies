@@ -1,34 +1,34 @@
 {
-    "TIMESTAMP": "2026-03-18 07:21:37",
-    "BEST_SCORE": 0.9744054511278877,
+    "TIMESTAMP": "2026-03-18 07:50:28",
+    "BEST_SCORE": 0.975384060150447,
     "SAMPLES_USED": 10000,
     "TIRE_MODEL": {
         "SOFT": {
-            "base_delta": -0.35958883273081477,
-            "deg_linear": 0.13327678174331312,
-            "deg_quadratic": 0.009923564134456522,
-            "age_temp_interaction": 0.01928310942176736,
-            "threshold": 5
+            "base_delta": -0.09849806792886417,
+            "deg_linear": 0.12290638092609535,
+            "deg_quadratic": 0.009831767752414037,
+            "age_temp_interaction": 0.018781377142865343,
+            "threshold": 6
         },
         "MEDIUM": {
-            "base_delta": 0.6208850502851402,
-            "deg_linear": 0.08287741102181288,
-            "deg_quadratic": 0.0035209499968588925,
-            "age_temp_interaction": 0.008463138740998756,
-            "threshold": 14
+            "base_delta": 0.6474941073178531,
+            "deg_linear": 0.10042646527118554,
+            "deg_quadratic": 0.003646240468229565,
+            "age_temp_interaction": 0.007592390429682334,
+            "threshold": 16
         },
         "HARD": {
-            "base_delta": 0.7148006608602524,
-            "deg_linear": 0.05237704779181368,
-            "deg_quadratic": 0.0005298944726508608,
-            "age_temp_interaction": 0.0007268525987043006,
-            "threshold": 16
+            "base_delta": 0.7465956206185829,
+            "deg_linear": 0.046096571242372895,
+            "deg_quadratic": 0.0006523832705859952,
+            "age_temp_interaction": 0.001340711735225829,
+            "threshold": 20
         }
     },
-    "TEMP_REFERENCE_C": 10.156798529860769,
+    "TEMP_REFERENCE_C": 10.52040470345343,
     "TEMP_SENSITIVITY": {
-        "SOFT": -0.03977579116030725,
-        "MEDIUM": -0.022241912509470465,
-        "HARD": 0.0012333318990984333
+        "SOFT": -0.03457978095760389,
+        "MEDIUM": -0.03000144901643613,
+        "HARD": -0.010695643766741082
     }
 }
