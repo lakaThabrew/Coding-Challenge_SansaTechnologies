@@ -14,6 +14,7 @@ import sys
 import numpy as np
 from pathlib import Path
 from scipy.optimize import differential_evolution
+from collections import defaultdict
 
 from race_simulator import (
     TireParams,
@@ -157,6 +158,20 @@ def simulate_driver_fast(race_config, strategy, params):
             
     return total_time
 
+def simulate_race_times_and_order(race_config, strategies, params):
+    """Return predicted order and driver total times for a race."""
+    driver_times = []
+    for pos_key in strategies:
+        strat = strategies[pos_key]
+        race_time = simulate_driver_fast(race_config, strat, params)
+        driver_times.append((strat["driver_id"], race_time, strat))
+
+    driver_times.sort(key=lambda x: (x[1], x[0]))
+    predicted = [d for d, _, _ in driver_times]
+    time_map = {d: t for d, t, _ in driver_times}
+    strat_map = {item["driver_id"]: item for item in strategies.values()}
+    return predicted, time_map, strat_map
+
 def evaluate_score(races, params, verbose=False):
     total = 0.0
     for race in races:
@@ -188,6 +203,154 @@ def evaluate_score(races, params, verbose=False):
         print(f"Avg Score: {score:.6f}")
     return score
 
+def _temperature_weight(track_temp):
+    # Emphasize temperature extremes so model generalizes at cold/hot tracks.
+    if track_temp < 20.0 or track_temp >= 40.0:
+        return 1.35
+    return 1.0
+
+def _pairwise_top10_score(expected, predicted):
+    """Pairwise ordering accuracy among expected top-10 drivers."""
+    top = expected[:10]
+    pred_pos = {d: i for i, d in enumerate(predicted)}
+    total_pairs = 0
+    correct_pairs = 0
+
+    for i in range(len(top)):
+        for j in range(i + 1, len(top)):
+            total_pairs += 1
+            if pred_pos[top[i]] < pred_pos[top[j]]:
+                correct_pairs += 1
+
+    return (correct_pairs / total_pairs) if total_pairs else 0.0
+
+def _crossover_accuracy(expected, time_map, strat_map):
+    """
+    Compare best SOFT->HARD vs MEDIUM->HARD one-stop archetypes.
+    Returns 1.0 if model predicts same winner as expected order, else 0.0.
+    """
+    soft_candidates = []
+    medium_candidates = []
+    expected_pos = {d: i for i, d in enumerate(expected)}
+
+    for driver_id, strat in strat_map.items():
+        pit_stops = strat.get("pit_stops", [])
+        if len(pit_stops) == 1 and pit_stops[0]["to_tire"] == "HARD":
+            item = (driver_id, time_map[driver_id])
+            if strat["starting_tire"] == "SOFT":
+                soft_candidates.append(item)
+            elif strat["starting_tire"] == "MEDIUM":
+                medium_candidates.append(item)
+
+    if not soft_candidates or not medium_candidates:
+        return 0.5
+
+    best_soft = min(soft_candidates, key=lambda x: x[1])[0]
+    best_medium = min(medium_candidates, key=lambda x: x[1])[0]
+
+    model_winner_soft = time_map[best_soft] < time_map[best_medium]
+    expected_winner_soft = expected_pos[best_soft] < expected_pos[best_medium]
+    return 1.0 if model_winner_soft == expected_winner_soft else 0.0
+
+def _strategy_bias_penalty(expected, predicted, strat_map):
+    """Penalize known systematic ranking bias by strategy archetype."""
+    exp_pos = {d: i for i, d in enumerate(expected)}
+    pred_pos = {d: i for i, d in enumerate(predicted)}
+
+    soft_very_short = []
+    medium_mid = []
+    hard_early = []
+
+    for driver_id, strat in strat_map.items():
+        pit_stops = strat.get("pit_stops", [])
+        first_stint = pit_stops[0]["lap"] if pit_stops else 999
+        delta = pred_pos[driver_id] - exp_pos[driver_id]
+        start = strat["starting_tire"]
+
+        if start == "SOFT" and first_stint <= 7:
+            # Negative delta means over-promoted; penalize only that direction.
+            soft_very_short.append(max(0.0, -delta))
+        elif start == "MEDIUM" and 11 <= first_stint <= 20:
+            # Positive delta means under-promoted.
+            medium_mid.append(max(0.0, delta))
+        elif start == "HARD" and first_stint <= 15:
+            # Positive delta means under-promoted.
+            hard_early.append(max(0.0, delta))
+
+    def avg(arr):
+        return (sum(arr) / len(arr)) if arr else 0.0
+
+    return avg(soft_very_short) + avg(medium_mid) + avg(hard_early)
+
+def parameter_regularization(params):
+    """Regularize towards physically plausible behavior from diagnostics."""
+    reg = 0.0
+
+    soft = params.tire_model["SOFT"]
+    medium = params.tire_model["MEDIUM"]
+    hard = params.tire_model["HARD"]
+
+    # Reduce SOFT short-stint over-performance (encourage earlier degradation onset).
+    reg += 0.0025 * max(0.0, soft.threshold - 6.0) ** 2
+
+    # Flatten MEDIUM mid-stint penalty (discourage overly steep degradation terms).
+    reg += 0.06 * max(0.0, medium.deg_linear - 0.09) ** 2
+    reg += 12.0 * max(0.0, medium.deg_quadratic - 0.0025) ** 2
+
+    # Rebalance HARD early stint penalty (avoid excessive baseline handicap).
+    reg += 0.02 * max(0.0, hard.base_delta - 1.0) ** 2
+
+    # Keep temperature sensitivity in a stable range to avoid overfitting.
+    for tire in ["SOFT", "MEDIUM", "HARD"]:
+        reg += 0.01 * max(0.0, abs(params.temp_sensitivity[tire]) - 0.04) ** 2
+
+    return reg
+
+def evaluate_objective_score(races, params, verbose=False):
+    """
+    Composite objective:
+    - Base Spearman + exact-match bonus
+    - Pairwise top-10 ordering score
+    - SOFT-vs-MEDIUM crossover accuracy
+    - Strategy-bias penalty from known failure modes
+    - Temperature bucket weighting
+    """
+    weighted_total = 0.0
+    total_weight = 0.0
+
+    for race in races:
+        race_config = race["race_config"]
+        strategies = race["strategies"]
+        expected = race["finishing_positions"]
+
+        predicted, time_map, strat_map = simulate_race_times_and_order(race_config, strategies, params)
+
+        n = len(expected)
+        pred_pos = {d: i for i, d in enumerate(predicted)}
+        exp_pos = {d: i for i, d in enumerate(expected)}
+
+        ssd = sum((pred_pos[d] - exp_pos[d]) ** 2 for d in exp_pos)
+        rho = 1.0 - (6.0 * ssd) / (n * (n * n - 1))
+        base = (rho + 1.0) / 2.0
+        bonus = 0.15 if predicted == expected else 0.0
+
+        pairwise_top10 = _pairwise_top10_score(expected, predicted)
+        crossover = _crossover_accuracy(expected, time_map, strat_map)
+        bias_penalty = _strategy_bias_penalty(expected, predicted, strat_map)
+
+        race_score = base + bonus + 0.22 * pairwise_top10 + 0.08 * crossover - 0.015 * bias_penalty
+
+        w = _temperature_weight(float(race_config["track_temp"]))
+        weighted_total += w * race_score
+        total_weight += w
+
+    score = (weighted_total / total_weight) if total_weight else 0.0
+    score -= parameter_regularization(params)
+
+    if verbose:
+        print(f"Composite Score: {score:.6f}")
+    return score
+
 # --------------------------------------------------------------------------------
 # Main Process
 # --------------------------------------------------------------------------------
@@ -216,15 +379,15 @@ def main():
 
     def objective(vec):
         params = ModelParams.from_vector(vec)
-        score = evaluate_score(train_races, params)
-        return 1.0 - (score / 1.15) # Normalize to 0-1 range roughly
+        score = evaluate_objective_score(train_races, params)
+        return 1.0 - (score / 1.45)
 
     print(f"[{datetime.datetime.now()}] Starting Differential Evolution...")
     
     def checkpoint_callback(xk, convergence):
         best_p = ModelParams.from_vector(xk)
-        score = evaluate_score(train_races, best_p)
-        print(f"[{datetime.datetime.now()}] Checkpoint: Best Score = {score:.6f} (conv={convergence:.4f})")
+        score = evaluate_objective_score(train_races, best_p)
+        print(f"[{datetime.datetime.now()}] Checkpoint: Best Composite Score = {score:.6f} (conv={convergence:.4f})")
         # Save intermediate result
         save_calibration_results(best_p, score, len(train_races), Path("solution/model_parameters_checkpoint.json"), Path("solution/calibration_log.txt"), is_checkpoint=True)
 
@@ -240,8 +403,8 @@ def main():
     )
     
     best_params = ModelParams.from_vector(result.x)
-    train_score = evaluate_score(train_races, best_params)
-    val_score = evaluate_score(val_races, best_params)
+    train_score = evaluate_objective_score(train_races, best_params)
+    val_score = evaluate_objective_score(val_races, best_params)
     
     print(f"\nFinal Results:")
     print(f"Train Score: {train_score:.6f}")

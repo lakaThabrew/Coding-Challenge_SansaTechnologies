@@ -15,22 +15,43 @@ class TireParams:
 
 def load_parameters():
     global TIRE_MODEL, TEMP_REFERENCE_C, TEMP_SENSITIVITY
-    config_path = Path(__file__).parent / "model_parameters.json"
-    if config_path.exists():
+    base_dir = Path(__file__).parent
+    config_candidates = [
+        base_dir / "model_parameters.json",
+        base_dir / "model_parameters_checkpoint.json",
+    ]
+
+    best_data = None
+    best_score = float("-inf")
+
+    for config_path in config_candidates:
+        if not config_path.exists():
+            continue
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, "r", encoding="utf-8-sig") as f:
                 data = json.load(f)
-            for k, v in data.get("TIRE_MODEL", {}).items():
-                TIRE_MODEL[k] = TireParams(
-                    v["base_delta"], v["deg_linear"], v["deg_quadratic"], v["age_temp_interaction"],
-                    v.get("threshold", 0)
-                )
-            TEMP_REFERENCE_C = data.get("TEMP_REFERENCE_C", TEMP_REFERENCE_C)
-            sens = data.get("TEMP_SENSITIVITY", {})
-            for k, v in sens.items():
-                TEMP_SENSITIVITY[k] = v
+            score = data.get("BEST_SCORE", float("-inf"))
+            if score > best_score:
+                best_score = score
+                best_data = data
         except Exception as e:
-            print(f"Warning: Failed to load external parameters: {e}", file=sys.stderr)
+            print(f"Warning: Failed to read {config_path.name}: {e}", file=sys.stderr)
+
+    if best_data is None:
+        return
+
+    try:
+        for k, v in best_data.get("TIRE_MODEL", {}).items():
+            TIRE_MODEL[k] = TireParams(
+                v["base_delta"], v["deg_linear"], v["deg_quadratic"], v["age_temp_interaction"],
+                v.get("threshold", 0)
+            )
+        TEMP_REFERENCE_C = best_data.get("TEMP_REFERENCE_C", TEMP_REFERENCE_C)
+        sens = best_data.get("TEMP_SENSITIVITY", {})
+        for k, v in sens.items():
+            TEMP_SENSITIVITY[k] = v
+    except Exception as e:
+        print(f"Warning: Failed to load external parameters: {e}", file=sys.stderr)
 
 def build_pit_map(pit_stops):
     return {int(stop["lap"]): stop["to_tire"] for stop in pit_stops}
