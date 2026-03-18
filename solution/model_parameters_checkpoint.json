@@ -1,34 +1,34 @@
 {
-    "TIMESTAMP": "2026-03-17 15:09:09",
-    "BEST_SCORE": 0.9696300375940444,
+    "TIMESTAMP": "2026-03-18 07:21:37",
+    "BEST_SCORE": 0.9744054511278877,
     "SAMPLES_USED": 10000,
     "TIRE_MODEL": {
         "SOFT": {
-            "base_delta": -0.7446172820552488,
-            "deg_linear": 0.1585820557377999,
-            "deg_quadratic": 0.005941181290102004,
-            "age_temp_interaction": 0.01230736754737782,
-            "threshold": 4
+            "base_delta": -0.35958883273081477,
+            "deg_linear": 0.13327678174331312,
+            "deg_quadratic": 0.009923564134456522,
+            "age_temp_interaction": 0.01928310942176736,
+            "threshold": 5
         },
         "MEDIUM": {
-            "base_delta": 0.47669433908689557,
-            "deg_linear": 0.08009659680282805,
-            "deg_quadratic": 0.003244678488130783,
-            "age_temp_interaction": 0.005349154179901687,
+            "base_delta": 0.6208850502851402,
+            "deg_linear": 0.08287741102181288,
+            "deg_quadratic": 0.0035209499968588925,
+            "age_temp_interaction": 0.008463138740998756,
             "threshold": 14
         },
         "HARD": {
-            "base_delta": 0.3617719650300122,
-            "deg_linear": 0.06840970854302492,
-            "deg_quadratic": 0.0016850072676364153,
-            "age_temp_interaction": -0.001772055539632294,
-            "threshold": 14
+            "base_delta": 0.7148006608602524,
+            "deg_linear": 0.05237704779181368,
+            "deg_quadratic": 0.0005298944726508608,
+            "age_temp_interaction": 0.0007268525987043006,
+            "threshold": 16
         }
     },
-    "TEMP_REFERENCE_C": 11.905010605015875,
+    "TEMP_REFERENCE_C": 10.156798529860769,
     "TEMP_SENSITIVITY": {
-        "SOFT": -0.02744333442225895,
-        "MEDIUM": -0.008295873454395086,
-        "HARD": 0.01927590196518887
+        "SOFT": -0.03977579116030725,
+        "MEDIUM": -0.022241912509470465,
+        "HARD": 0.0012333318990984333
     }
 }
