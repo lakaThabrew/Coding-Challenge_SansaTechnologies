@@ -1,34 +1,27 @@
 {
-    "TIMESTAMP": "2026-03-18 17:04:56",
-    "BEST_SCORE": 16113.714419381788,
-    "SAMPLES_USED": 100,
-    "TIRE_MODEL": {
+    "TIMESTAMP": "2026-03-18 19:17:13",
+    "BEST_SCORE": 1.1178496240601492,
+    "PARAMS": {
         "SOFT": {
-            "base_delta": 0.5862702779504804,
-            "deg_linear": 0.054763472074302696,
-            "deg_quadratic": 0.012376784019777157,
-            "age_temp_interaction": 0.014374472819960842,
-            "threshold": 7
+            "offset": 2.958962,
+            "cliff": 10.0,
+            "deg": 0.393805,
+            "deg2": 0.0
         },
         "MEDIUM": {
-            "base_delta": 0.8898230582036403,
-            "deg_linear": 0.09405738006770686,
-            "deg_quadratic": 0.003930897802639697,
-            "age_temp_interaction": 0.006714465294768269,
-            "threshold": 18
+            "offset": 3.92625,
+            "cliff": 20.0,
+            "deg": 0.200598,
+            "deg2": 0.0
         },
         "HARD": {
-            "base_delta": 0.8279558609999702,
-            "deg_linear": 0.043414807860441336,
-            "deg_quadratic": 0.0016322110156126233,
-            "age_temp_interaction": 0.003711594625010514,
-            "threshold": 27
-        }
-    },
-    "TEMP_REFERENCE_C": 11.115661523871976,
-    "TEMP_SENSITIVITY": {
-        "SOFT": -0.026288249073965615,
-        "MEDIUM": -0.010480691191746815,
-        "HARD": 0.013410042596542184
+            "offset": 4.724486,
+            "cliff": 30.0,
+            "deg": 0.10319,
+            "deg2": 0.0
+        },
+        "temp_coef": 0.112095,
+        "fuel_effect": 0.0,
+        "temp_base_coef": 0.0
     }
 }
