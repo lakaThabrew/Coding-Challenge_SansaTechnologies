@@ -1,0 +1,27 @@
+{
+    "TIMESTAMP": "2026-03-18 19:30:50",
+    "BEST_SCORE": 1.1178496240601492,
+    "PARAMS": {
+        "SOFT": {
+            "offset": 2.958962,
+            "cliff": 10.0,
+            "deg": 0.393805,
+            "deg2": 0.0
+        },
+        "MEDIUM": {
+            "offset": 3.92625,
+            "cliff": 20.0,
+            "deg": 0.200598,
+            "deg2": 0.0
+        },
+        "HARD": {
+            "offset": 4.724486,
+            "cliff": 30.0,
+            "deg": 0.10319,
+            "deg2": 0.0
+        },
+        "temp_coef": 0.112095,
+        "fuel_effect": 0.0,
+        "temp_base_coef": 0.0
+    }
+}
